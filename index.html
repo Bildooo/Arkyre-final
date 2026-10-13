@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Výšky otvorů – balkony</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#eef1f4;--panel:#fff;--ink:#1d2a33;--mute:#5d6b76;--line:#c9d2d9;--a:#2f6f8f;--b:#c0792b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14191d;--panel:#1d252b;--ink:#e6ecf0;--mute:#93a1ab;--line:#35424b;--a:#6fb3d2;--b:#e0a35c}}
+:root[data-theme="dark"]{--bg:#14191d;--panel:#1d252b;--ink:#e6ecf0;--mute:#93a1ab;--line:#35424b;--a:#6fb3d2;--b:#e0a35c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.4rem;margin:0 0 4px}
+p.sub{margin:0 0 20px;color:var(--mute)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+label{display:block;font-size:.9rem;color:var(--mute);margin-bottom:4px}
+input,select{width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink)}
+input:focus-visible,select:focus-visible{outline:2px solid var(--a);outline-offset:1px}
+.full{grid-column:1/-1}
+.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:420px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mute);font-size:.9rem}
+td.a{color:var(--a);font-weight:600}
+td.b{color:var(--b);font-weight:600}
+.note{color:var(--mute);font-size:.9rem;margin:10px 0 0}
+.err{color:#c0392b;font-weight:600}
+.sketch{display:flex;gap:6px;align-items:flex-end;height:150px;margin-top:8px}
+.sketch div{flex:1;display:flex;flex-direction:column;gap:2px;height:100%;justify-content:flex-end}
+.sketch span{display:block;border-radius:2px}
+</style>
+</head>
+<body>
+<main>
+<h1>Výšky otvorů pro 3 balkony</h1>
+<p class="sub">Zadej celkové výšky balkonů a výšku po zábradlí. Program spočítá 6 otvorů: B je na všech patrech stejné, A se mu co nejvíc blíží.</p>
+
+<div class="panel">
+  <div class="grid">
+    <div><label for="x3">X3 – horní balkon (mm)</label><input id="x3" type="number" inputmode="decimal" value="2900"></div>
+    <div><label for="x2">X2 – prostřední balkon (mm)</label><input id="x2" type="number" inputmode="decimal" value="2900"></div>
+    <div><label for="x1">X1 – spodní balkon (mm)</label><input id="x1" type="number" inputmode="decimal" value="2900"></div>
+    <div><label for="rail">Výška po zábradlí (mm)</label><input id="rail" type="number" inputmode="decimal" value="1255"></div>
+    <div><label for="gap">Mezera / sloupek mezi A a B (mm)</label><input id="gap" type="number" inputmode="decimal" value="0"></div>
+    <div><label for="mode">Co nejpodobnější = </label>
+      <select id="mode">
+        <option value="ls">nejmenší součet čtverců odchylek</option>
+        <option value="mm">nejmenší největší odchylka</option>
+        <option value="abs">nejmenší společná (součet) odchylka</option>
+      </select></div>
+  </div>
+</div>
+
+<div class="panel">
+  <div id="msg"></div>
+  <div class="wrap">
+    <table>
+      <thead><tr><th>Patro</th><th>Celkem X</th><th>Otvor celkem</th><th>A</th><th>B</th><th>A − B</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <p class="note" id="info"></p>
+</div>
+</main>
+
+<script>
+// ---- výpočet ----
+function spocitej(X, zabradli, mezera, rezim) {
+  // X = [X3, X2, X1]; vrací { B, patra:[{X,H,A,B,diff}] }
+  const H = X.map(x => x - zabradli - mezera);      // součet A+B v každém patře
+  let B;
+  if (rezim === "mm") B = (Math.min(...H) + Math.max(...H)) / 4;      // minimalizuje max |A-B|
+  else if (rezim === "abs") {                                          // minimalizuje součet |A-B|
+    const s = [...H].sort((a, b) => a - b);
+    const med = s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+    B = med / 2;
+  }
+  else                B = H.reduce((s, h) => s + h, 0) / (2 * H.length); // minimalizuje součet (A-B)^2
+  B = Math.round(B);                                // celé mm
+  const patra = X.map((x, i) => {
+    const A = H[i] - B;
+    return { X: x, H: H[i] + mezera, A, B, diff: A - B };
+  });
+  return { B, patra };
+}
+
+// ---- UI ----
+const $ = id => document.getElementById(id);
+const nazvy = ["3. patro (X3)", "2. patro (X2)", "1. patro (X1)"];
+function render() {
+  const X = ["x3", "x2", "x1"].map(id => parseFloat($(id).value));
+  const zab = parseFloat($("rail").value), gap = parseFloat($("gap").value) || 0;
+  const msg = $("msg"), rows = $("rows");
+  if ([...X, zab].some(isNaN)) { msg.innerHTML = '<span class="err">Vyplň všechna čísla.</span>'; rows.innerHTML = ""; return; }
+  const r = spocitej(X, zab, gap, $("mode").value);
+  const bad = r.patra.some(p => p.A <= 0 || p.B <= 0);
+  msg.innerHTML = bad ? '<span class="err">Některý otvor vychází ≤ 0 – zkontroluj vstupy.</span>' : "";
+  rows.innerHTML = r.patra.map((p, i) =>
+    `<tr><td>${nazvy[i]}</td><td>${p.X}</td><td>${p.H}</td><td class="a">${p.A}</td><td class="b">${p.B}</td><td>${p.diff > 0 ? "+" : ""}${p.diff}</td></tr>`
+  ).join("");
+  const soucet = r.patra.reduce((s, p) => s + Math.abs(p.diff), 0);
+  $("info").textContent = `Součet |A − B| = ${soucet} mm. B = ${r.B} mm na všech patrech. Hodnoty jsou zaokrouhlené na celé mm; A + B (+ mezera) vždy přesně dává výšku otvoru.`;
+}
+["x3","x2","x1","rail","gap","mode"].forEach(id => $(id).addEventListener("input", render));
+render();
+</script>
+</body>
+</html>
